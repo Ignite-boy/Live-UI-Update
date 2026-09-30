@@ -90,21 +90,30 @@ def ask_gemini():
     }
     req = urllib.request.Request(
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
-        data=json.dumps(body).encode(),
+        data=json.dumps(body).encode("utf-8"),
         headers={
-            "x-goog-api-key": os.environ["GEMINI_API_KEY"],
+            "x-goog-api-key": os.environ["GEMINI_API_KEY"].strip(),
             "Content-Type": "application/json",
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=180) as response:
-        data = json.load(response)
+    try:
+        with urllib.request.urlopen(req, timeout=180) as response:
+            data = json.load(response)
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Gemini HTTP {e.code}: {raw[:2000]}") from e
+
     parts = []
     for candidate in data.get("candidates", []):
         for part in candidate.get("content", {}).get("parts", []):
             if isinstance(part, dict) and isinstance(part.get("text"), str):
                 parts.append(part["text"])
-    return {"output_text": "\n".join(parts).strip()}
+
+    text = "\n".join(parts).strip()
+    if not text:
+        raise RuntimeError("Gemini returned no text")
+    return {"output_text": text}
 
 def ask(model):
     body = dict(body_base)
@@ -176,7 +185,10 @@ if text == "NO_CHANGE":
     sys.exit(0)
 
 summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.S)
-summary = summary_match.group(1).strip() if summary_match else "Improve MILAN UI"
+summary = summary_match.group(1).strip() if summary_match else ""
+if not summary or summary == "Improve MILAN UI":
+    print("AI did not provide a specific UI summary; skipping commit.")
+    sys.exit(0)
 
 match = re.search(r"<patch>\s*(.*?)\s*</patch>", text, re.S)
 if not match:
