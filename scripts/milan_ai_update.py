@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path("milan")
+ROOT = Path(".")
 ALLOWED = re.compile(r"^frontend/.*\.(html|css|js)$", re.I)
 
 def run(*cmd, cwd=None, check=True):
