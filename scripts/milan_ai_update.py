@@ -57,6 +57,11 @@ Rules:
 - Preserve all existing APIs and functionality.
 - No giant refactors, rewrites, or formatting-only changes.
 - Prefer targeted UX, accessibility, responsiveness, visual polish, performance, or interaction improvements.
+- Before choosing the change, inspect the current frontend and identify the next concrete user-facing improvement opportunity.
+- Inspect recent git history/diff context when available so you do not repeat a recently completed improvement.
+- Prefer a different UI area each cycle when a safe opportunity exists: buttons, typography, spacing, cards, forms, navigation, responsive behavior, empty states, loading states, accessibility, visual hierarchy, or interaction feedback.
+- Prioritize real user-facing improvements over arbitrary cosmetic changes.
+- Do not repeatedly change the same selector, component, text, or spacing unless it still clearly needs improvement.
 - If no safe meaningful improvement exists, return exactly NO_CHANGE.
 - Return a short human-readable change summary in <summary>...</summary>.
 - Then return the unified git diff enclosed in <patch>...</patch>.
