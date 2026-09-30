@@ -79,8 +79,10 @@ jobs:
           git switch -c "$BRANCH"
           git add frontend
           git diff --cached --check
-          SUMMARY="$(cat /tmp/milan-ai-summary 2>/dev/null || echo 'Improve MILAN UI')"
-          SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | cut -c1-160)"
+          SUMMARY="$(cat /tmp/milan-ai-summary 2>/dev/null || true)"
+          SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-160)"
+          test -n "$SUMMARY"
+          test "$SUMMARY" != "Improve MILAN UI"
           git commit -m "feat(ui): $SUMMARY"
           git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
 
