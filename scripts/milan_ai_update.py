@@ -58,7 +58,10 @@ Rules:
 - No giant refactors, rewrites, or formatting-only changes.
 - Prefer targeted UX, accessibility, responsiveness, visual polish, performance, or interaction improvements.
 - If no safe meaningful improvement exists, return exactly NO_CHANGE.
-- Return ONLY a unified git diff enclosed in <patch>...</patch>.
+- Return a short human-readable change summary in <summary>...</summary>.
+- Then return the unified git diff enclosed in <patch>...</patch>.
+- The summary must describe exactly what UI/UX was improved, e.g. "Improve publish button spacing".
+- Do not return NO_CHANGE unless a safe UI change is genuinely impossible.
 - The patch must apply cleanly to the current files.
 """
 
@@ -130,6 +133,9 @@ if text == "NO_CHANGE":
     print("NO_CHANGE")
     sys.exit(0)
 
+summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.S)
+summary = summary_match.group(1).strip() if summary_match else "Improve MILAN UI"
+
 match = re.search(r"<patch>\s*(.*?)\s*</patch>", text, re.S)
 if not match:
     print("AI returned no valid patch; skipping safely.")
@@ -173,5 +179,7 @@ if not changed:
     print("NO_CHANGE")
     sys.exit(0)
 
+Path("/tmp/milan-ai-summary").write_text(summary[:180], encoding="utf-8")
+print("AI CHANGE:", summary)
 print("AI PATCH APPLIED:")
 print("\n".join(changed))
