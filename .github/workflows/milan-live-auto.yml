@@ -97,10 +97,12 @@ jobs:
           test "$SUMMARY" != "Improve MILAN UI"
           test -n "$COMMIT_TITLE" || COMMIT_TITLE="$SUMMARY"
 
-          COMMIT_NAME="feat(ui): $COMMIT_TITLE (cycle #$GITHUB_RUN_NUMBER)"
+          COMMIT_NAME="feat(ui): [cycle-$GITHUB_RUN_NUMBER] $COMMIT_TITLE"
           echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
 
           git commit -m "$COMMIT_NAME"
+          ACTUAL_COMMIT_NAME="$(git log -1 --pretty=%s)"
+          test "$ACTUAL_COMMIT_NAME" = "$COMMIT_NAME"
           COMMIT_SHA="$(git rev-parse HEAD)"
           echo "UI_COMMIT_SHA=$COMMIT_SHA" >> "$GITHUB_ENV"
 
@@ -148,6 +150,10 @@ jobs:
           PR_NUMBER="$(gh pr list --repo Ignite-boy/MILAN --head "$AUTO_BRANCH" --base main --state open --json number --jq '.[0].number')"
           test -n "$PR_NUMBER"
           gh pr merge "$PR_NUMBER" --repo Ignite-boy/MILAN --squash --delete-branch
+          git fetch origin main
+          MERGED_COMMIT_NAME="$(git log origin/main -1 --pretty=%s)"
+          echo "MERGED COMMIT NAME: $MERGED_COMMIT_NAME"
+          echo "$MERGED_COMMIT_NAME" | grep -F "[cycle-$GITHUB_RUN_NUMBER]"
 
       - name: Verify production deployment
         if: env.NO_AI_CHANGES == 'false'
