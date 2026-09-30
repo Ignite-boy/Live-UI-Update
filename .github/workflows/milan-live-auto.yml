@@ -6,7 +6,7 @@ on:
     - cron: "*/5 * * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: milan-live-auto
@@ -24,8 +24,10 @@ jobs:
           fetch-depth: 0
 
       - name: Prepare MILAN workspace
+        env:
+          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          git clone https://github.com/Ignite-boy/MILAN.git milan
+          git clone https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git milan
           cd milan
           git config user.name "MILAN Live UI Bot"
           git config user.email "bot@milanlife.in"
@@ -35,47 +37,75 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python3 ../scripts/milan_ai_update.py
+          python3 ../scripts/milan_ai_update.py || true
 
-      - name: Analyze current MILAN UI
+      - name: Validate AI changes
         working-directory: milan
         run: |
-          echo "=== MILAN HEAD ==="
-          git rev-parse HEAD
-          echo "=== FRONTEND FILES ==="
-          find frontend -maxdepth 3 -type f | sort | head -n 200
-          echo "=== STATUS ==="
-          git status --short
+          if git diff --quiet; then
+            echo "NO_AI_CHANGES=true" >> "$GITHUB_ENV"
+            echo "No AI changes this cycle."
+            exit 0
+          fi
 
-      - name: Safe validation
+          git diff --check
+
+          changed_js="$(git diff --name-only -- '*.js')"
+          if [ -n "$changed_js" ]; then
+            while IFS= read -r file; do
+              [ -n "$file" ] && node --check "$file"
+            done <<< "$changed_js"
+          fi
+
+          echo "NO_AI_CHANGES=false" >> "$GITHUB_ENV"
+
+      - name: Prepare production marker
+        if: env.NO_AI_CHANGES == 'false'
         working-directory: milan
         run: |
-          node --check frontend/assets/js/app-page-actions.js
-          node --check frontend/assets/js/milan-ui-actions.js
+          printf '%s\n' "${GITHUB_RUN_ID}" > frontend/milan-build.txt
 
-      - name: Commit and push AI UI changes
+      - name: Commit and push validated UI
+        if: env.NO_AI_CHANGES == 'false'
         working-directory: milan
         env:
           MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "No AI changes this cycle."
-            exit 0
-          fi
-          git diff --check
-          node --check frontend/assets/js/app-page-actions.js
-          node --check frontend/assets/js/milan-ui-actions.js
           git add frontend
+          git diff --cached --check
           git commit -m "feat: automated MILAN UI improvement"
-          git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" pull --rebase origin main
+          git fetch origin main
+          git rebase origin/main
           git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" push origin main
 
-      - name: Live verification
+      - name: Verify live deployment
+        if: env.NO_AI_CHANGES == 'false'
+        env:
+          RUN_ID: ${{ github.run_id }}
         run: |
-          for i in 1 2 3 4 5; do
-            code="$(curl -L -s -o /dev/null -w '%{http_code}' --max-time 20 https://milanlife.in/)"
-            echo "Attempt $i: HTTP $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 15
+          for i in $(seq 1 12); do
+            code="$(curl -L -s -o /tmp/milan-home -w '%{http_code}' --max-time 20 "https://milanlife.in/?_milan_run=${RUN_ID}")"
+            marker="$(curl -L -s --max-time 20 "https://milanlife.in/milan-build.txt?_milan_run=${RUN_ID}" || true)"
+
+            echo "Attempt $i: HTTP=$code MARKER=$marker"
+
+            if [ "$code" = "200" ] && [ "$marker" = "$RUN_ID" ]; then
+              echo "LIVE DEPLOYMENT VERIFIED"
+              exit 0
+            fi
+
+            sleep 20
           done
+
           exit 1
+
+      - name: Roll back failed deployment
+        if: failure() && env.NO_AI_CHANGES == 'false'
+        working-directory: milan
+        env:
+          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          git fetch origin main
+          bad_commit="$(git rev-parse origin/main)"
+          git revert --no-edit "$bad_commit" || true
+          git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" push origin main || true
