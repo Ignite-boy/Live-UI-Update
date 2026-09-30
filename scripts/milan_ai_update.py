@@ -97,12 +97,19 @@ def ask_gemini():
         },
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as response:
-            data = json.load(response)
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini HTTP {e.code}: {raw[:2000]}") from e
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as response:
+                data = json.load(response)
+            break
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", errors="replace")
+            print(f"Gemini HTTP {e.code} attempt {attempt + 1}/4: {raw[:1200]}")
+            if e.code not in (429, 500, 502, 503, 504) or attempt == 3:
+                raise RuntimeError(f"Gemini HTTP {e.code}: {raw[:2000]}") from e
+            time.sleep(5 * (2 ** attempt))
+    else:
+        raise RuntimeError("Gemini retry loop exhausted")
 
     parts = []
     for candidate in data.get("candidates", []):
