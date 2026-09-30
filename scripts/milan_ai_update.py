@@ -108,7 +108,7 @@ def ask_gemini(model):
                             "summary": {"type": "string"},
                             "patch": {"type": "string"}
                         },
-                        "required": ["decision", "summary", "patch"]
+                        "required": ["decision", "summary", "commit_title", "patch"]
                     }
                 }
             },
@@ -161,6 +161,7 @@ OUTPUT CONTRACT:
 Return ONLY JSON matching the required schema.
 decision = CHANGE only when you can make one safe, meaningful frontend UI/UX improvement.
 summary must be a precise human-readable description of the actual UI change.
+commit_title must be a concise conventional-commit-style title describing the actual UI change, without a prefix such as feat(ui):.
 patch must be a valid unified git diff that applies cleanly to the current MILAN frontend.
 Use NO_CHANGE only when no safe meaningful UI improvement is possible.
 """
@@ -177,9 +178,10 @@ Use NO_CHANGE only when no safe meaningful UI improvement is possible.
                     "properties": {
                         "decision": {"type": "string", "enum": ["CHANGE", "NO_CHANGE"]},
                         "summary": {"type": "string"},
+                        "commit_title": {"type": "string"},
                         "patch": {"type": "string"}
                     },
-                    "required": ["decision", "summary", "patch"],
+                    "required": ["decision", "summary", "commit_title", "patch"],
                     "additionalProperties": False
                 }
             }
@@ -296,6 +298,7 @@ for candidate in data.get("candidates", []):
 text = "\n".join(parts).strip()
 
 summary = ""
+commit_title = ""
 patch = ""
 
 try:
@@ -308,6 +311,7 @@ try:
     if isinstance(payload, dict):
         decision = str(payload.get("decision", "")).strip().upper()
         summary = str(payload.get("summary", "")).strip()
+        commit_title = str(payload.get("commit_title", "")).strip()
         patch = str(payload.get("patch", "")).strip()
 
         if decision == "NO_CHANGE":
@@ -369,6 +373,7 @@ if not changed:
     sys.exit(0)
 
 Path("/tmp/milan-ai-summary").write_text(summary[:180], encoding="utf-8")
+Path("/tmp/milan-ai-commit-title").write_text(commit_title[:120], encoding="utf-8")
 print("AI CHANGE:", summary)
 print("AI PATCH APPLIED:")
 print("\n".join(changed))

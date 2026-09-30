@@ -91,10 +91,13 @@ jobs:
           git diff --cached --check
           SUMMARY="$(cat /tmp/milan-ai-summary 2>/dev/null || true)"
           SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-160)"
+          COMMIT_TITLE="$(cat /tmp/milan-ai-commit-title 2>/dev/null || true)"
+          COMMIT_TITLE="$(printf '%s' "$COMMIT_TITLE" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-120)"
           test -n "$SUMMARY"
           test "$SUMMARY" != "Improve MILAN UI"
+          test -n "$COMMIT_TITLE" || COMMIT_TITLE="$SUMMARY"
 
-          COMMIT_NAME="feat(ui): $SUMMARY"
+          COMMIT_NAME="feat(ui): $COMMIT_TITLE"
           echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
 
           git commit -m "$COMMIT_NAME"
