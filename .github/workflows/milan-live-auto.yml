@@ -15,7 +15,7 @@ concurrency:
 jobs:
   auto-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout Live-UI-Update
@@ -74,6 +74,7 @@ jobs:
         run: |
           BRANCH="auto-ui-${GITHUB_RUN_ID}"
           echo "AUTO_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          printf '%s\n' "$GITHUB_RUN_ID" > frontend/milan-build.txt
           git switch -c "$BRANCH"
           git add frontend
           git diff --cached --check
@@ -85,7 +86,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          gh pr create             --repo Ignite-boy/MILAN             --base main             --head "$AUTO_BRANCH"             --title "Automated MILAN UI update ${GITHUB_RUN_ID}"             --body "Automated UI change. Main remains untouched until verification passes."
+          gh pr create             --repo Ignite-boy/MILAN             --base main             --head "$AUTO_BRANCH"             --title "Automated MILAN UI update ${GITHUB_RUN_ID}"             --body "Automated UI change. Main is changed only after validation."
 
       - name: Verify PR branch
         if: env.NO_AI_CHANGES == 'false'
@@ -106,4 +107,29 @@ jobs:
         run: |
           PR_NUMBER="$(gh pr list --repo Ignite-boy/MILAN --head "$AUTO_BRANCH" --base main --state open --json number --jq '.[0].number')"
           test -n "$PR_NUMBER"
-          gh pr merge "$PR_NUMBER"             --repo Ignite-boy/MILAN             --squash             --delete-branch             --auto
+          gh pr merge "$PR_NUMBER" --repo Ignite-boy/MILAN --squash --delete-branch
+
+      - name: Verify production deployment
+        if: env.NO_AI_CHANGES == 'false'
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          for i in $(seq 1 30); do
+            code="$(curl -L -s -o /tmp/milan-home -w '%{http_code}' --max-time 20 "https://milanlife.in/?_milan_run=${RUN_ID}")"
+            marker="$(curl -L -s --max-time 20 "https://milanlife.in/milan-build.txt?_milan_run=${RUN_ID}" || true)"
+            echo "Deploy check $i/30: HTTP=$code MARKER=$marker"
+            if [ "$code" = "200" ] && [ "$marker" = "$RUN_ID" ]; then
+              echo "DEPLOYMENT SUCCESSFUL"
+              exit 0
+            fi
+            sleep 20
+          done
+          exit 1
+
+      - name: Trigger next continuous cycle
+        if: success() && env.NO_AI_CHANGES == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          gh workflow run milan-live-auto.yml             --repo Ignite-boy/Live-UI-Update             --ref main
+          echo "NEXT CYCLE TRIGGERED"
