@@ -1,4 +1,4 @@
-import json, os, re, subprocess, sys, urllib.request
+import json, os, re, subprocess, sys, urllib.request, urllib.error
 from pathlib import Path
 
 ROOT = Path("milan")
@@ -14,10 +14,10 @@ def source_snapshot():
             try:
                 text = p.read_text(encoding="utf-8", errors="ignore")
                 if len(text) <= 30000:
-                    files.append(f"\n===== {p.relative_to(ROOT)} =====\n{text}")
+                    files.append(f"\n===== {p.relative_to(ROOT)} =====\n{text[:8000]}")
             except Exception:
                 pass
-    return "".join(files)[:180000]
+    return "".join(files)[:70000]
 
 prompt = """You are the autonomous UI engineer for the MILAN production web app.
 Repository: Ignite-boy/MILAN
@@ -39,8 +39,9 @@ Rules:
 """
 
 body = {
-    "model": "gpt-5.6-luna",
+    "model": os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
     "input": prompt + "\n\nCURRENT MILAN FRONTEND:\n" + source_snapshot(),
+    "max_output_tokens": 12000,
 }
 
 req = urllib.request.Request(
@@ -53,8 +54,27 @@ req = urllib.request.Request(
     method="POST",
 )
 
-with urllib.request.urlopen(req, timeout=180) as r:
-    data = json.load(r)
+import time
+data = None
+for attempt in range(6):
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = json.load(r)
+        break
+    except urllib.error.HTTPError as e:
+        if e.code != 429 or attempt == 5:
+            raise
+        retry_after = e.headers.get("Retry-After")
+        try:
+            delay = max(15, min(180, int(retry_after)))
+        except (TypeError, ValueError):
+            delay = min(180, 15 * (2 ** attempt))
+        print(f"OpenAI rate limited; retry {attempt + 1}/5 in {delay}s")
+        time.sleep(delay)
+
+if data is None:
+    raise RuntimeError("OpenAI request returned no data")
+
 
 chunks = []
 for item in data.get("output", []):
