@@ -39,7 +39,16 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python3 ../scripts/milan_ai_update.py
+          for attempt in 1 2 3; do
+            echo "AI UI attempt $attempt/3"
+            python3 ../scripts/milan_ai_update.py
+            if ! git diff --quiet; then
+              echo "REAL UI CHANGE GENERATED"
+              exit 0
+            fi
+            echo "No valid UI patch yet; trying another free model/attempt..."
+          done
+          echo "No real UI change generated after 3 free attempts."
 
       - name: Validate AI changes
         working-directory: milan
