@@ -128,12 +128,6 @@ jobs:
           done
           exit 1
 
-      - name: Wait 5 minutes before next cycle
-        if: success()
-        run: |
-          echo "CURRENT CYCLE GREEN"
-          echo "Waiting 5 minutes before next cycle..."
-          sleep 300
 
       - name: Trigger next continuous cycle
         if: success()
