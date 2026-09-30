@@ -149,6 +149,44 @@ def ask_gemini(model):
 
     raise RuntimeError(f"Gemini {model} retry loop exhausted")
 
+def ask_openrouter():
+    body = {
+        "model": "openrouter/free",
+        "messages": [
+            {
+                "role": "user",
+                "content": body_base["input"]
+            }
+        ],
+        "max_tokens": body_base["max_output_tokens"],
+    }
+
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"].strip(),
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://milanlife.in",
+            "X-Title": "MILAN Live UI Update",
+        },
+        method="POST",
+    )
+
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", errors="replace")
+            print(f"OpenRouter HTTP {e.code} attempt {attempt + 1}/3: {raw[:1200]}")
+            if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(5 * (2 ** attempt))
+                continue
+            raise RuntimeError(f"OpenRouter HTTP {e.code}: {raw[:2000]}") from e
+
+    raise RuntimeError("OpenRouter retry loop exhausted")
+
 def ask(model):
     body = dict(body_base)
     body["model"] = model
@@ -178,7 +216,15 @@ def ask(model):
 
 data = None
 
-if os.environ.get("GEMINI_API_KEY"):
+if os.environ.get("OPENROUTER_API_KEY"):
+    try:
+        print("Trying model: openrouter/free")
+        data = ask_openrouter()
+        print("OpenRouter model selected: openrouter/free")
+    except Exception as e:
+        print(f"OpenRouter unavailable: {type(e).__name__}: {e}")
+
+if data is None and os.environ.get("GEMINI_API_KEY"):
     for gemini_model in GEMINI_MODELS:
         try:
             print(f"Trying model: {gemini_model}")
@@ -188,21 +234,25 @@ if os.environ.get("GEMINI_API_KEY"):
         except Exception as e:
             print(f"Gemini unavailable ({gemini_model}): {type(e).__name__}: {e}")
 
-if data is None and os.environ.get("OPENAI_API_KEY"):
-    for model in models:
-        try:
-            print(f"Trying model: {model}")
-            data = ask(model)
-            break
-        except Exception as e:
-            print(f"Model unavailable: {type(e).__name__}")
-            continue
+if data is None:
+    print("AI unavailable this cycle; safely skipping code generation.")
+    sys.exit(0)
 
 if data is None:
     print("AI unavailable this cycle; safely skipping code generation.")
     sys.exit(0)
 
 parts = []
+
+for choice in data.get("choices", []):
+    message = choice.get("message", {})
+    content = message.get("content")
+    if isinstance(content, str):
+        parts.append(content)
+    elif isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
 
 if isinstance(data.get("output_text"), str):
     parts.append(data["output_text"])

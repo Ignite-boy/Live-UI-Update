@@ -36,7 +36,7 @@ jobs:
       - name: AI generate and patch UI
         working-directory: milan
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python3 ../scripts/milan_ai_update.py
