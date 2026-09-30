@@ -15,7 +15,7 @@ concurrency:
 jobs:
   auto-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Live-UI-Update
@@ -27,7 +27,7 @@ jobs:
         env:
           MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          git clone https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git milan
+          git clone "https://github.com/Ignite-boy/MILAN.git" milan
           cd milan
           git config user.name "MILAN Live UI Bot"
           git config user.email "bot@milanlife.in"
@@ -37,7 +37,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python3 ../scripts/milan_ai_update.py || true
+          python3 ../scripts/milan_ai_update.py
 
       - name: Validate AI changes
         working-directory: milan
@@ -57,55 +57,53 @@ jobs:
             done <<< "$changed_js"
           fi
 
+          bad="$(git diff --name-only | grep -Ev '^frontend/.*\.(html|css|js)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unsafe files changed:"
+            echo "$bad"
+            exit 1
+          fi
+
           echo "NO_AI_CHANGES=false" >> "$GITHUB_ENV"
 
-      - name: Prepare production marker
-        if: env.NO_AI_CHANGES == 'false'
-        working-directory: milan
-        run: |
-          printf '%s\n' "${GITHUB_RUN_ID}" > frontend/milan-build.txt
-
-      - name: Commit and push validated UI
+      - name: Create verified branch
         if: env.NO_AI_CHANGES == 'false'
         working-directory: milan
         env:
           MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
+          BRANCH="auto-ui-${GITHUB_RUN_ID}"
+          echo "AUTO_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          git switch -c "$BRANCH"
           git add frontend
           git diff --cached --check
           git commit -m "feat: automated MILAN UI improvement"
-          git fetch origin main
-          git rebase origin/main
-          git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" push origin main
+          git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
 
-      - name: Verify live deployment
+      - name: Create verification PR
         if: env.NO_AI_CHANGES == 'false'
         env:
-          RUN_ID: ${{ github.run_id }}
+          GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          for i in $(seq 1 12); do
-            code="$(curl -L -s -o /tmp/milan-home -w '%{http_code}' --max-time 20 "https://milanlife.in/?_milan_run=${RUN_ID}")"
-            marker="$(curl -L -s --max-time 20 "https://milanlife.in/milan-build.txt?_milan_run=${RUN_ID}" || true)"
+          gh pr create             --repo Ignite-boy/MILAN             --base main             --head "$AUTO_BRANCH"             --title "Automated MILAN UI update ${GITHUB_RUN_ID}"             --body "Automated UI change. Main remains untouched until verification passes."
 
-            echo "Attempt $i: HTTP=$code MARKER=$marker"
-
-            if [ "$code" = "200" ] && [ "$marker" = "$RUN_ID" ]; then
-              echo "LIVE DEPLOYMENT VERIFIED"
-              exit 0
-            fi
-
-            sleep 20
-          done
-
-          exit 1
-
-      - name: Roll back failed deployment
-        if: failure() && env.NO_AI_CHANGES == 'false'
+      - name: Verify PR branch
+        if: env.NO_AI_CHANGES == 'false'
         working-directory: milan
-        env:
-          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          git fetch origin main
-          bad_commit="$(git rev-parse origin/main)"
-          git revert --no-edit "$bad_commit" || true
-          git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" push origin main || true
+          git diff --check origin/main...HEAD
+          changed_js="$(git diff --name-only origin/main...HEAD -- '*.js')"
+          if [ -n "$changed_js" ]; then
+            while IFS= read -r file; do
+              [ -n "$file" ] && node --check "$file"
+            done <<< "$changed_js"
+          fi
+
+      - name: Merge verified PR
+        if: env.NO_AI_CHANGES == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          PR_NUMBER="$(gh pr list --repo Ignite-boy/MILAN --head "$AUTO_BRANCH" --base main --state open --json number --jq '.[0].number')"
+          test -n "$PR_NUMBER"
+          gh pr merge "$PR_NUMBER"             --repo Ignite-boy/MILAN             --squash             --delete-branch             --auto
