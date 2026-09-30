@@ -151,14 +151,39 @@ def ask_gemini(model):
 
 def ask_openrouter():
     body = {
-        "model": "openrouter/free",
+        "model": "qwen/qwen3.8-27b:free",
         "messages": [
             {
                 "role": "user",
-                "content": body_base["input"]
+                "content": body_base["input"] + """
+
+OUTPUT CONTRACT:
+Return ONLY JSON matching the required schema.
+decision = CHANGE only when you can make one safe, meaningful frontend UI/UX improvement.
+summary must be a precise human-readable description of the actual UI change.
+patch must be a valid unified git diff that applies cleanly to the current MILAN frontend.
+Use NO_CHANGE only when no safe meaningful UI improvement is possible.
+"""
             }
         ],
         "max_tokens": body_base["max_output_tokens"],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "milan_ui_update",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "decision": {"type": "string", "enum": ["CHANGE", "NO_CHANGE"]},
+                        "summary": {"type": "string"},
+                        "patch": {"type": "string"}
+                    },
+                    "required": ["decision", "summary", "patch"],
+                    "additionalProperties": False
+                }
+            }
+        }
     }
 
     req = urllib.request.Request(
