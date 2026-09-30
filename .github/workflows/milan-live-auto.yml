@@ -30,12 +30,12 @@ jobs:
           git config user.name "MILAN Live UI Bot"
           git config user.email "bot@milanlife.in"
 
-      - name: Check AI CLI availability
+      - name: AI generate and patch UI
+        working-directory: milan
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          command -v node || true
-          command -v npm || true
-          command -v npx || true
-          echo "AI coding step will run only when its required credentials are configured."
+          python3 ../scripts/milan_ai_update.py
 
       - name: Analyze current MILAN UI
         working-directory: milan
@@ -53,19 +53,22 @@ jobs:
           node --check frontend/assets/js/app-page-actions.js
           node --check frontend/assets/js/milan-ui-actions.js
 
-      - name: Commit and push only existing safe changes
+      - name: Commit and push AI UI changes
         working-directory: milan
+        env:
+          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
           if git diff --quiet && git diff --cached --quiet; then
-            echo "NO_CHANGES=true" >> "$GITHUB_ENV"
-            echo "No changes to commit."
+            echo "No AI changes this cycle."
             exit 0
           fi
-          git add -A
-          git commit -m "chore: automated MILAN UI update"
-          git pull --rebase origin main
-          git push origin main
-          echo "NO_CHANGES=false" >> "$GITHUB_ENV"
+          git diff --check
+          node --check frontend/assets/js/app-page-actions.js
+          node --check frontend/assets/js/milan-ui-actions.js
+          git add frontend
+          git commit -m "feat: automated MILAN UI improvement"
+          git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" pull --rebase origin main
+          git -c http.extraheader="AUTHORIZATION: Bearer ${MILAN_GH_TOKEN}" push origin main
 
       - name: Live verification
         run: |
