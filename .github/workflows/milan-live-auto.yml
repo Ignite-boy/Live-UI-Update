@@ -165,7 +165,7 @@ jobs:
 
 
       - name: Trigger next continuous cycle
-        if: success() && env.NO_AI_CHANGES == 'false'
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
