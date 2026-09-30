@@ -195,6 +195,12 @@ for item in data.get("output", []):
         if isinstance(content, dict) and isinstance(content.get("text"), str):
             parts.append(content["text"])
 
+for candidate in data.get("candidates", []):
+    content = candidate.get("content", {})
+    for part in content.get("parts", []):
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            parts.append(part["text"])
+
 text = "\n".join(parts).strip()
 
 if text == "NO_CHANGE":
