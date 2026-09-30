@@ -97,7 +97,7 @@ jobs:
           test "$SUMMARY" != "Improve MILAN UI"
           test -n "$COMMIT_TITLE" || COMMIT_TITLE="$SUMMARY"
 
-          COMMIT_NAME="feat(ui): $COMMIT_TITLE"
+          COMMIT_NAME="feat(ui): $COMMIT_TITLE (cycle #$GITHUB_RUN_NUMBER)"
           echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
 
           git commit -m "$COMMIT_NAME"
