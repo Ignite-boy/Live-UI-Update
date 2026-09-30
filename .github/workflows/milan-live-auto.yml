@@ -2,8 +2,6 @@ name: MILAN Live Auto Update
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
@@ -15,7 +13,7 @@ concurrency:
 jobs:
   auto-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout Live-UI-Update
@@ -126,8 +124,15 @@ jobs:
           done
           exit 1
 
+      - name: Wait 5 minutes before next cycle
+        if: success()
+        run: |
+          echo "CURRENT CYCLE GREEN"
+          echo "Waiting 5 minutes before next cycle..."
+          sleep 300
+
       - name: Trigger next continuous cycle
-        if: success() && env.NO_AI_CHANGES == 'false'
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
