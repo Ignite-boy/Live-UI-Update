@@ -1,0 +1,78 @@
+name: MILAN Live Auto Update
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: milan-live-auto
+  cancel-in-progress: false
+
+jobs:
+  auto-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout Live-UI-Update
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare MILAN workspace
+        run: |
+          git clone https://github.com/Ignite-boy/MILAN.git milan
+          cd milan
+          git config user.name "MILAN Live UI Bot"
+          git config user.email "bot@milanlife.in"
+
+      - name: Check AI CLI availability
+        run: |
+          command -v node || true
+          command -v npm || true
+          command -v npx || true
+          echo "AI coding step will run only when its required credentials are configured."
+
+      - name: Analyze current MILAN UI
+        working-directory: milan
+        run: |
+          echo "=== MILAN HEAD ==="
+          git rev-parse HEAD
+          echo "=== FRONTEND FILES ==="
+          find frontend -maxdepth 3 -type f | sort | head -n 200
+          echo "=== STATUS ==="
+          git status --short
+
+      - name: Safe validation
+        working-directory: milan
+        run: |
+          node --check frontend/assets/js/app-page-actions.js
+          node --check frontend/assets/js/milan-ui-actions.js
+
+      - name: Commit and push only existing safe changes
+        working-directory: milan
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "NO_CHANGES=true" >> "$GITHUB_ENV"
+            echo "No changes to commit."
+            exit 0
+          fi
+          git add -A
+          git commit -m "chore: automated MILAN UI update"
+          git pull --rebase origin main
+          git push origin main
+          echo "NO_CHANGES=false" >> "$GITHUB_ENV"
+
+      - name: Live verification
+        run: |
+          for i in 1 2 3 4 5; do
+            code="$(curl -L -s -o /dev/null -w '%{http_code}' --max-time 20 https://milanlife.in/)"
+            echo "Attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          exit 1
