@@ -2,6 +2,8 @@ name: MILAN Live Auto Update
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
@@ -76,7 +78,9 @@ jobs:
           git switch -c "$BRANCH"
           git add frontend
           git diff --cached --check
-          git commit -m "feat: automated MILAN UI improvement"
+          SUMMARY="$(cat /tmp/milan-ai-summary 2>/dev/null || echo 'Improve MILAN UI')"
+          SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | cut -c1-160)"
+          git commit -m "feat(ui): $SUMMARY"
           git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
 
       - name: Create verification PR
