@@ -95,6 +95,23 @@ def ask_gemini(model):
         "generationConfig": {
             "maxOutputTokens": body_base["max_output_tokens"],
             "thinkingConfig": {"thinkingLevel": "medium"},
+            "responseFormat": {
+                "text": {
+                    "mimeType": "application/json",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "decision": {
+                                "type": "string",
+                                "enum": ["CHANGE", "NO_CHANGE"]
+                            },
+                            "summary": {"type": "string"},
+                            "patch": {"type": "string"}
+                        },
+                        "required": ["decision", "summary", "patch"]
+                    }
+                }
+            },
         },
     }
 
@@ -203,25 +220,45 @@ for candidate in data.get("candidates", []):
 
 text = "\n".join(parts).strip()
 
-if text == "NO_CHANGE":
-    print("NO_CHANGE")
-    sys.exit(0)
+summary = ""
+patch = ""
 
-summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.S)
-summary = summary_match.group(1).strip() if summary_match else ""
+try:
+    json_text = text
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
+    if fenced:
+        json_text = fenced.group(1)
+    payload = json.loads(json_text)
+
+    if isinstance(payload, dict):
+        decision = str(payload.get("decision", "")).strip().upper()
+        summary = str(payload.get("summary", "")).strip()
+        patch = str(payload.get("patch", "")).strip()
+
+        if decision == "NO_CHANGE":
+            print("NO_CHANGE")
+            sys.exit(0)
+except Exception:
+    pass
+
+if not summary or not patch:
+    summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.S)
+    summary = summary_match.group(1).strip() if summary_match else ""
+
+    match = re.search(r"<patch>\s*(.*?)\s*</patch>", text, re.S)
+    patch = match.group(1).strip() if match else ""
+
 if not summary or summary == "Improve MILAN UI":
     print("AI did not provide a specific UI summary; skipping commit.")
     sys.exit(0)
 
-match = re.search(r"<patch>\s*(.*?)\s*</patch>", text, re.S)
-if not match:
+if not patch:
     print("AI returned no valid patch; skipping safely.")
     sys.exit(0)
 
-patch = match.group(1).strip()
-if not patch:
-    print("Empty patch; skipping safely.")
-    sys.exit(0)
+if patch.startswith("```") and patch.endswith("```"):
+    patch = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", patch)
+    patch = re.sub(r"\s*```$", "", patch).strip()
 
 patch_file = Path("/tmp/milan-ai.patch")
 patch_file.write_text(patch + "\n", encoding="utf-8")

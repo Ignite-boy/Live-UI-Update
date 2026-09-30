@@ -114,7 +114,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          gh pr create             --repo Ignite-boy/MILAN             --base main             --head "$AUTO_BRANCH"             --title "Automated MILAN UI update ${GITHUB_RUN_ID}"             --body "Automated UI change. Main is changed only after validation."
+          gh pr create --repo Ignite-boy/MILAN --base main --head "$AUTO_BRANCH" --title "$UI_COMMIT_NAME" --body "Automated UI change. Main is changed only after validation."
 
       - name: Verify PR branch
         if: env.NO_AI_CHANGES == 'false'
