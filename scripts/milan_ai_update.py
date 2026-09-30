@@ -62,7 +62,14 @@ for attempt in range(6):
             data = json.load(r)
         break
     except urllib.error.HTTPError as e:
-        if e.code != 429 or attempt == 5:
+        if e.code != 429:
+            raise
+        try:
+            detail = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = ""
+        print("OPENAI_429:", detail[:1200])
+        if attempt == 5:
             raise
         retry_after = e.headers.get("Retry-After")
         try:
