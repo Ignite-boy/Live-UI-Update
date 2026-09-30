@@ -80,7 +80,16 @@ models = [
     "gpt-5.3-codex",
 ]
 
-def ask_gemini():
+GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+]
+
+def ask_gemini(model):
     body = {
         "contents": [{"parts": [{"text": body_base["input"]}]}],
         "generationConfig": {
@@ -88,8 +97,9 @@ def ask_gemini():
             "thinkingConfig": {"thinkingLevel": "medium"},
         },
     }
+
     req = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         data=json.dumps(body).encode("utf-8"),
         headers={
             "x-goog-api-key": os.environ["GEMINI_API_KEY"].strip(),
@@ -97,30 +107,30 @@ def ask_gemini():
         },
         method="POST",
     )
-    for attempt in range(4):
+
+    for attempt in range(3):
         try:
             with urllib.request.urlopen(req, timeout=180) as response:
-                data = json.load(response)
-            break
+                return json.load(response)
+
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", errors="replace")
-            print(f"Gemini HTTP {e.code} attempt {attempt + 1}/4: {raw[:1200]}")
-            if e.code not in (429, 500, 502, 503, 504) or attempt == 3:
-                raise RuntimeError(f"Gemini HTTP {e.code}: {raw[:2000]}") from e
-            time.sleep(5 * (2 ** attempt))
-    else:
-        raise RuntimeError("Gemini retry loop exhausted")
+            print(f"Gemini {model} HTTP {e.code} attempt {attempt + 1}/3: {raw[:1200]}")
 
-    parts = []
-    for candidate in data.get("candidates", []):
-        for part in candidate.get("content", {}).get("parts", []):
-            if isinstance(part, dict) and isinstance(part.get("text"), str):
-                parts.append(part["text"])
+            # Quota exhausted for this model: immediately try another model.
+            if e.code == 429:
+                raise RuntimeError(f"Gemini {model} quota exhausted") from e
 
-    text = "\n".join(parts).strip()
-    if not text:
-        raise RuntimeError("Gemini returned no text")
-    return {"output_text": text}
+            # Temporary capacity/server failure: retry this model.
+            if e.code in (500, 502, 503, 504) and attempt < 2:
+                time.sleep(5 * (2 ** attempt))
+                continue
+
+            raise RuntimeError(
+                f"Gemini {model} HTTP {e.code}: {raw[:2000]}"
+            ) from e
+
+    raise RuntimeError(f"Gemini {model} retry loop exhausted")
 
 def ask(model):
     body = dict(body_base)
@@ -152,14 +162,14 @@ def ask(model):
 data = None
 
 if os.environ.get("GEMINI_API_KEY"):
-    try:
-        print("Trying model: gemini-3.8-flash")
-        data = ask_gemini()
-    except urllib.error.HTTPError as e:
-        raw=e.read().decode("utf-8", errors="replace")
-        print(f"Gemini HTTP {e.code}: {raw[:2000]}")
-    except Exception as e:
-        print(f"Gemini unavailable: {type(e).__name__}: {e}")
+    for gemini_model in GEMINI_MODELS:
+        try:
+            print(f"Trying model: {gemini_model}")
+            data = ask_gemini(gemini_model)
+            print(f"Gemini model selected: {gemini_model}")
+            break
+        except Exception as e:
+            print(f"Gemini unavailable ({gemini_model}): {type(e).__name__}: {e}")
 
 if data is None and os.environ.get("OPENAI_API_KEY"):
     for model in models:

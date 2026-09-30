@@ -84,7 +84,29 @@ jobs:
           SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-160)"
           test -n "$SUMMARY"
           test "$SUMMARY" != "Improve MILAN UI"
-          git commit -m "feat(ui): $SUMMARY"
+
+          COMMIT_NAME="feat(ui): $SUMMARY"
+          echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
+
+          git commit -m "$COMMIT_NAME"
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          echo "UI_COMMIT_SHA=$COMMIT_SHA" >> "$GITHUB_ENV"
+
+          {
+            echo "## 🚀 MILAN Live UI Update"
+            echo
+            echo "**Commit:** \`$COMMIT_NAME\`"
+            echo
+            echo "**Commit SHA:** \`$COMMIT_SHA\`"
+            echo
+            echo "**Manual testing:** inspect this exact commit in the MILAN repository."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "========================================"
+          echo "UI COMMIT NAME: $COMMIT_NAME"
+          echo "UI COMMIT SHA:  $COMMIT_SHA"
+          echo "========================================"
+
           git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
 
       - name: Create verification PR
@@ -134,7 +156,7 @@ jobs:
 
 
       - name: Trigger next continuous cycle
-        if: success()
+        if: success() && env.NO_AI_CHANGES == 'false'
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
