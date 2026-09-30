@@ -139,8 +139,11 @@ if os.environ.get("GEMINI_API_KEY"):
     try:
         print("Trying model: gemini-3.8-flash")
         data = ask_gemini()
+    except urllib.error.HTTPError as e:
+        raw=e.read().decode("utf-8", errors="replace")
+        print(f"Gemini HTTP {e.code}: {raw[:2000]}")
     except Exception as e:
-        print(f"Gemini unavailable: {type(e).__name__}")
+        print(f"Gemini unavailable: {type(e).__name__}: {e}")
 
 if data is None and os.environ.get("OPENAI_API_KEY"):
     for model in models:
