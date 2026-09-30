@@ -80,6 +80,32 @@ models = [
     "gpt-5.3-codex",
 ]
 
+def ask_gemini():
+    body = {
+        "contents": [{"parts": [{"text": body_base["input"]}]}],
+        "generationConfig": {
+            "maxOutputTokens": body_base["max_output_tokens"],
+            "thinkingConfig": {"thinkingLevel": "medium"},
+        },
+    }
+    req = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        data=json.dumps(body).encode(),
+        headers={
+            "x-goog-api-key": os.environ["GEMINI_API_KEY"],
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=180) as response:
+        data = json.load(response)
+    parts = []
+    for candidate in data.get("candidates", []):
+        for part in candidate.get("content", {}).get("parts", []):
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+    return {"output_text": "\n".join(parts).strip()}
+
 def ask(model):
     body = dict(body_base)
     body["model"] = model
@@ -109,14 +135,22 @@ def ask(model):
 
 data = None
 
-for model in models:
+if os.environ.get("GEMINI_API_KEY"):
     try:
-        print(f"Trying model: {model}")
-        data = ask(model)
-        break
+        print("Trying model: gemini-3.8-flash")
+        data = ask_gemini()
     except Exception as e:
-        print(f"Model unavailable: {type(e).__name__}")
-        continue
+        print(f"Gemini unavailable: {type(e).__name__}")
+
+if data is None and os.environ.get("OPENAI_API_KEY"):
+    for model in models:
+        try:
+            print(f"Trying model: {model}")
+            data = ask(model)
+            break
+        except Exception as e:
+            print(f"Model unavailable: {type(e).__name__}")
+            continue
 
 if data is None:
     print("AI unavailable this cycle; safely skipping code generation.")
