@@ -1,7 +1,14 @@
-name: MILAN Live Auto Update
+name: MILAN UI Cycle
+
+run-name: ${{ inputs.run_name || format('MILAN UI Cycle #{0}', github.run_number) }}
 
 on:
   workflow_dispatch:
+    inputs:
+      run_name:
+        description: 'Dynamic cycle run name'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -187,7 +194,7 @@ jobs:
           echo "CYCLE FAILED — STARTING RECOVERY UI CYCLE"
           attempt=1
           while true; do
-            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main; then
+            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main -f run_name="${UI_COMMIT_NAME:-MILAN UI Recovery Cycle}"; then
               echo "RECOVERY UI CYCLE TRIGGERED"
               exit 0
             fi
@@ -205,7 +212,7 @@ jobs:
           echo "GREEN CYCLE COMPLETE — STARTING NEXT UI IMPROVEMENT"
           attempt=1
           while true; do
-            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main; then
+            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main -f run_name="${UI_COMMIT_NAME:-MILAN UI Recovery Cycle}"; then
               echo "NEXT UI CYCLE TRIGGERED"
               exit 0
             fi
