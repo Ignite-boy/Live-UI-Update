@@ -56,11 +56,14 @@ jobs:
           done
 
           if git diff --quiet; then
+            echo "NO_UI_CHANGE=true" >> "$GITHUB_ENV"
             echo "No real UI change generated; starting another planner cycle."
             exit 0
           fi
+          echo "NO_UI_CHANGE=false" >> "$GITHUB_ENV"
 
       - name: Validate AI changes
+        if: env.NO_UI_CHANGE != 'true'
         working-directory: milan
         run: |
           git diff --check
@@ -80,6 +83,7 @@ jobs:
           fi
 
       - name: Create verified UI commit
+        if: env.NO_UI_CHANGE != 'true'
         working-directory: milan
         env:
           MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
@@ -125,6 +129,7 @@ jobs:
           echo "BRANCH: $BRANCH"
 
       - name: Trigger named MILAN UI deployment cycle
+        if: env.NO_UI_CHANGE != 'true'
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
