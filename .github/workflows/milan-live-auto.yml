@@ -144,6 +144,7 @@ jobs:
 
       - name: Merge verified PR
         if: env.NO_AI_CHANGES == 'false'
+        working-directory: milan
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
