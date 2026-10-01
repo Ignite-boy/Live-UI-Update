@@ -195,13 +195,13 @@ jobs:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
           echo "GREEN CYCLE COMPLETE — STARTING NEXT UI IMPROVEMENT"
-          for attempt in 1 2 3 4 5; do
+          attempt=1
+          while true; do
             if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main; then
               echo "NEXT UI CYCLE TRIGGERED"
               exit 0
             fi
-            echo "Trigger attempt $attempt failed; retrying..."
-            sleep 10
+            echo "Trigger attempt $attempt failed; retrying in 15 seconds..."
+            attempt=$((attempt + 1))
+            sleep 15
           done
-          echo "Unable to trigger next cycle after 5 attempts"
-          exit 1
