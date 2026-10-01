@@ -46,7 +46,7 @@ jobs:
             fi
             echo "No valid UI patch yet; trying another free model/attempt..."
           done
-          echo "No real UI change generated after 3 free attempts."; exit 1
+          echo "No real UI change generated after 3 free attempts; completing this cycle cleanly so the next cycle can retry."; exit 0
 
       - name: Validate AI changes
         working-directory: milan
