@@ -124,6 +124,7 @@ jobs:
           echo "UI COMMIT NAME: $COMMIT_NAME"
           echo "UI COMMIT SHA:  $COMMIT_SHA"
           echo "========================================"
+          echo "::notice title=MILAN UI Commit::$COMMIT_NAME"
 
           git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
 
