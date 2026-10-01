@@ -367,8 +367,9 @@ if commit_title.lower().startswith(("feat(ui):", "fix(ui):", "chore(ui):")):
 
 normalized_recent = set()
 for subject in recent_titles:
-    m = re.match(r"^feat\(ui\):\s*\[cycle-[0-9]+\]\s*(.*)$", subject)
-    normalized_recent.add((m.group(1) if m else subject).strip().lower())
+    subject = re.sub(r"^feat\(ui\):\s*", "", subject)
+    subject = re.sub(r"^\[cycle-[0-9]+\]\s*", "", subject)
+    normalized_recent.add(subject.strip().lower())
 
 if commit_title.strip().lower() in normalized_recent:
     print("DUPLICATE AI COMMIT TITLE REJECTED:", commit_title)
