@@ -348,8 +348,12 @@ except Exception:
     recent_titles = []
 
 if not commit_title:
-    print("AI did not provide a mandatory commit_title; rejecting this attempt.")
-    sys.exit(0)
+    if summary:
+        commit_title = summary
+        print("AI omitted commit_title; using the AI-generated change summary as the commit title.")
+    else:
+        print("AI did not provide a usable commit title or summary; rejecting this attempt.")
+        sys.exit(0)
 
 if commit_title.lower() in {
     "improve milan ui",
