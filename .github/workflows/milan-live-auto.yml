@@ -48,7 +48,7 @@ jobs:
             fi
             echo "No valid UI patch yet; trying another free model/attempt..."
           done
-          echo "No real UI change generated after 3 free attempts."
+          echo "No real UI change generated after 3 free attempts."; exit 1
 
       - name: Validate AI changes
         working-directory: milan
@@ -169,6 +169,22 @@ jobs:
               exit 0
             fi
             sleep 20
+          done
+          exit 1
+
+
+      - name: Trigger recovery cycle after failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          echo "CYCLE FAILED — STARTING RECOVERY UI CYCLE"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main; then
+              echo "RECOVERY UI CYCLE TRIGGERED"
+              exit 0
+            fi
+            sleep 15
           done
           exit 1
 
