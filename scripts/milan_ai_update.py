@@ -115,23 +115,19 @@ def ask_gemini(model):
         "generationConfig": {
             "maxOutputTokens": body_base["max_output_tokens"],
             "thinkingConfig": {"thinkingLevel": "medium"},
-            "responseFormat": {
-                "text": {
-                    "mimeType": "application/json",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "decision": {
-                                "type": "string",
-                                "enum": ["CHANGE", "NO_CHANGE"]
-                            },
-                            "summary": {"type": "string"},
-                            "commit_title": {"type": "string"},
-                            "patch": {"type": "string"}
-                        },
-                        "required": ["decision", "summary", "commit_title", "patch"]
-                    }
-                }
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "object",
+                "properties": {
+                    "decision": {
+                        "type": "string",
+                        "enum": ["CHANGE", "NO_CHANGE"]
+                    },
+                    "summary": {"type": "string"},
+                    "commit_title": {"type": "string"},
+                    "patch": {"type": "string"}
+                },
+                "required": ["decision", "summary", "commit_title", "patch"]
             },
         },
     }
@@ -172,7 +168,7 @@ def ask_gemini(model):
 
 def ask_openrouter():
     body = {
-        "model": "qwen/qwen3.8-27b:free",
+        "model": "openrouter/free",
         "messages": [
             {
                 "role": "user",
