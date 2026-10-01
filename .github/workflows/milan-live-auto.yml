@@ -96,12 +96,12 @@ jobs:
           test -n "$COMMIT_TITLE"
           test "$COMMIT_TITLE" != "Improve MILAN UI"
 
-          if git log origin/main -n 40 --format='%s' | sed -E 's/^feat\(ui\): \[cycle-[0-9]+\] //' | grep -Fqx "$COMMIT_TITLE"; then
+          if git log origin/main -n 40 --format='%s' | sed -E 's/^feat\(ui\): //; s/^\[cycle-[0-9]+\] //' | grep -Fqx "$COMMIT_TITLE"; then
             echo "DUPLICATE AI COMMIT TITLE REJECTED: $COMMIT_TITLE"
             exit 1
           fi
 
-          COMMIT_NAME="feat(ui): [cycle-$GITHUB_RUN_NUMBER] $COMMIT_TITLE"
+          COMMIT_NAME="feat(ui): $COMMIT_TITLE"
           echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
 
           git commit -m "$COMMIT_NAME"
@@ -158,7 +158,7 @@ jobs:
           git fetch origin main
           MERGED_COMMIT_NAME="$(git log origin/main -1 --pretty=%s)"
           echo "MERGED COMMIT NAME: $MERGED_COMMIT_NAME"
-          echo "$MERGED_COMMIT_NAME" | grep -F "[cycle-$GITHUB_RUN_NUMBER]"
+          test "$MERGED_COMMIT_NAME" = "$UI_COMMIT_NAME"
 
       - name: Verify production deployment
         if: env.NO_AI_CHANGES == 'false'
