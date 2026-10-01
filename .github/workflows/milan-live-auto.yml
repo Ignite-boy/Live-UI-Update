@@ -2,8 +2,6 @@ name: MILAN Live Auto Update
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
@@ -180,14 +178,16 @@ jobs:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
           echo "CYCLE FAILED — STARTING RECOVERY UI CYCLE"
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          attempt=1
+          while true; do
             if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main; then
               echo "RECOVERY UI CYCLE TRIGGERED"
               exit 0
             fi
+            echo "Recovery trigger attempt $attempt failed; retrying in 15 seconds..."
+            attempt=$((attempt + 1))
             sleep 15
           done
-          exit 1
 
 
       - name: Trigger next continuous cycle
