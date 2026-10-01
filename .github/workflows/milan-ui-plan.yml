@@ -1,0 +1,162 @@
+name: MILAN UI Planner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: milan-ui-planner
+  cancel-in-progress: false
+
+jobs:
+  plan-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Live-UI-Update
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare MILAN workspace
+        env:
+          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          git clone "https://github.com/Ignite-boy/MILAN.git" milan
+          cd milan
+          git config user.name "MILAN Live UI Bot"
+          git config user.email "bot@milanlife.in"
+
+      - name: AI generate and patch UI
+        working-directory: milan
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          rm -f /tmp/milan-ai-summary /tmp/milan-ai-commit-title
+          for attempt in 1 2 3; do
+            echo "AI UI attempt $attempt/3"
+            if python3 ../scripts/milan_ai_update.py; then
+              :
+            else
+              echo "AI attempt $attempt returned an error; trying next free model/attempt..."
+            fi
+
+            if ! git diff --quiet; then
+              echo "REAL UI CHANGE GENERATED"
+              break
+            fi
+
+            echo "No valid UI patch yet; trying another free model/attempt..."
+            rm -f /tmp/milan-ai-summary /tmp/milan-ai-commit-title
+          done
+
+          if git diff --quiet; then
+            echo "No real UI change generated; starting another planner cycle."
+            exit 0
+          fi
+
+      - name: Validate AI changes
+        working-directory: milan
+        run: |
+          git diff --check
+
+          changed_js="$(git diff --name-only -- '*.js')"
+          if [ -n "$changed_js" ]; then
+            while IFS= read -r file; do
+              [ -n "$file" ] && node --check "$file"
+            done <<< "$changed_js"
+          fi
+
+          bad="$(git diff --name-only | grep -Ev '^frontend/.*\.(html|css|js)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unsafe files changed:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: Create verified UI commit
+        working-directory: milan
+        env:
+          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          BRANCH="auto-ui-${GITHUB_RUN_ID}"
+          SUMMARY="$(cat /tmp/milan-ai-summary)"
+          SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-160)"
+          COMMIT_TITLE="$(cat /tmp/milan-ai-commit-title)"
+          COMMIT_TITLE="$(printf '%s' "$COMMIT_TITLE" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-120)"
+
+          test -n "$SUMMARY"
+          test -n "$COMMIT_TITLE"
+          test "$COMMIT_TITLE" != "Improve MILAN UI"
+
+          if git log origin/main -n 40 --format='%s' | sed -E 's/^feat\(ui\): //; s/^\[cycle-[0-9]+\] //' | grep -Fqx "$COMMIT_TITLE"; then
+            echo "DUPLICATE AI COMMIT TITLE REJECTED: $COMMIT_TITLE"
+            exit 1
+          fi
+
+          COMMIT_NAME="feat(ui): $COMMIT_TITLE"
+
+          printf '%s\n' "$GITHUB_RUN_ID" > frontend/milan-build.txt
+          git switch -c "$BRANCH"
+          git add frontend
+          git diff --cached --check
+          git commit -m "$COMMIT_NAME"
+
+          ACTUAL_COMMIT_NAME="$(git log -1 --pretty=%s)"
+          test "$ACTUAL_COMMIT_NAME" = "$COMMIT_NAME"
+
+          COMMIT_SHA="$(git rev-parse HEAD)"
+
+          echo "AUTO_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          echo "COMMIT_TITLE=$COMMIT_TITLE" >> "$GITHUB_ENV"
+          echo "COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
+          echo "COMMIT_SHA=$COMMIT_SHA" >> "$GITHUB_ENV"
+
+          git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
+
+          echo "AI COMMIT TITLE: $COMMIT_TITLE"
+          echo "FULL COMMIT NAME: $COMMIT_NAME"
+          echo "COMMIT SHA: $COMMIT_SHA"
+          echo "BRANCH: $BRANCH"
+
+      - name: Trigger named MILAN UI deployment cycle
+        env:
+          GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          attempt=1
+          while true; do
+            if gh workflow run milan-live-auto.yml \
+              --repo Ignite-boy/Live-UI-Update \
+              --ref main \
+              -f run_name="$COMMIT_TITLE" \
+              -f auto_branch="$AUTO_BRANCH" \
+              -f expected_commit_sha="$COMMIT_SHA" \
+              -f build_id="${GITHUB_RUN_ID}"; then
+              echo "NAMED UI DEPLOYMENT CYCLE TRIGGERED"
+              exit 0
+            fi
+            echo "Trigger attempt $attempt failed; retrying in 15 seconds..."
+            attempt=$((attempt + 1))
+            sleep 15
+          done
+
+      - name: Trigger next planner cycle
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+        run: |
+          attempt=1
+          while true; do
+            if gh workflow run milan-ui-plan.yml --repo Ignite-boy/Live-UI-Update --ref main; then
+              echo "NEXT UI PLANNER CYCLE TRIGGERED"
+              exit 0
+            fi
+            echo "Planner trigger attempt $attempt failed; retrying in 15 seconds..."
+            attempt=$((attempt + 1))
+            sleep 15
+          done

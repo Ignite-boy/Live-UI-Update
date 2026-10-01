@@ -1,13 +1,25 @@
-name: MILAN UI Cycle
+name: MILAN UI Deployment
 
-run-name: ${{ inputs.run_name || format('MILAN UI Cycle #{0}', github.run_number) }}
+run-name: ${{ inputs.run_name || format('MILAN UI Deployment #{0}', github.run_number) }}
 
 on:
   workflow_dispatch:
     inputs:
       run_name:
-        description: 'Dynamic cycle run name'
-        required: false
+        description: 'AI-generated UI improvement name'
+        required: true
+        type: string
+      auto_branch:
+        description: 'Verified UI branch'
+        required: true
+        type: string
+      expected_commit_sha:
+        description: 'Expected UI commit SHA'
+        required: true
+        type: string
+      build_id:
+        description: 'Planner build marker'
+        required: true
         type: string
 
 permissions:
@@ -30,124 +42,60 @@ jobs:
           fetch-depth: 0
 
       - name: Prepare MILAN workspace
-        env:
-          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
           git clone "https://github.com/Ignite-boy/MILAN.git" milan
           cd milan
           git config user.name "MILAN Live UI Bot"
           git config user.email "bot@milanlife.in"
 
-      - name: AI generate and patch UI
+      - name: Validate verified UI commit
         working-directory: milan
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EXPECTED_SHA: ${{ inputs.expected_commit_sha }}
+          AUTO_BRANCH: ${{ inputs.auto_branch }}
         run: |
-          for attempt in 1 2 3; do
-            echo "AI UI attempt $attempt/3"
-            python3 ../scripts/milan_ai_update.py
-            if ! git diff --quiet; then
-              echo "REAL UI CHANGE GENERATED"
-              exit 0
-            fi
-            echo "No valid UI patch yet; trying another free model/attempt..."
-          done
-          echo "No real UI change generated after 3 free attempts; completing this cycle cleanly so the next cycle can retry."; exit 0
+          git fetch origin main "$AUTO_BRANCH"
+          BRANCH_SHA="$(git rev-parse "origin/$AUTO_BRANCH")"
+          echo "EXPECTED SHA: $EXPECTED_SHA"
+          echo "BRANCH SHA:   $BRANCH_SHA"
+          test "$BRANCH_SHA" = "$EXPECTED_SHA"
 
-      - name: Validate AI changes
-        working-directory: milan
-        run: |
-          if git diff --quiet; then
-            echo "NO_AI_CHANGES=true" >> "$GITHUB_ENV"
-            echo "No AI changes this cycle."
-            exit 0
+          changed="$(git diff --name-only origin/main..."$BRANCH_SHA")"
+          if [ -z "$changed" ]; then
+            echo "No changes on verified branch"
+            exit 1
           fi
 
-          git diff --check
-
-          changed_js="$(git diff --name-only -- '*.js')"
-          if [ -n "$changed_js" ]; then
-            while IFS= read -r file; do
-              [ -n "$file" ] && node --check "$file"
-            done <<< "$changed_js"
-          fi
-
-          bad="$(git diff --name-only | grep -Ev '^frontend/.*\.(html|css|js)$' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^frontend/.*\.(html|css|js)$' || true)"
           if [ -n "$bad" ]; then
             echo "Unsafe files changed:"
             echo "$bad"
             exit 1
           fi
 
-          echo "NO_AI_CHANGES=false" >> "$GITHUB_ENV"
-
-      - name: Create verified branch
-        if: env.NO_AI_CHANGES == 'false'
-        working-directory: milan
-        env:
-          MILAN_GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
-        run: |
-          BRANCH="auto-ui-${GITHUB_RUN_ID}"
-          echo "AUTO_BRANCH=$BRANCH" >> "$GITHUB_ENV"
-          printf '%s\n' "$GITHUB_RUN_ID" > frontend/milan-build.txt
-          git switch -c "$BRANCH"
-          git add frontend
-          git diff --cached --check
-          SUMMARY="$(cat /tmp/milan-ai-summary 2>/dev/null || true)"
-          SUMMARY="$(printf '%s' "$SUMMARY" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-160)"
-          COMMIT_TITLE="$(cat /tmp/milan-ai-commit-title 2>/dev/null || true)"
-          COMMIT_TITLE="$(printf '%s' "$COMMIT_TITLE" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-120)"
-          test -n "$SUMMARY"
-          test "$SUMMARY" != "Improve MILAN UI"
-          test -n "$COMMIT_TITLE"
-          test "$COMMIT_TITLE" != "Improve MILAN UI"
-
-          if git log origin/main -n 40 --format='%s' | sed -E 's/^feat\(ui\): //; s/^\[cycle-[0-9]+\] //' | grep -Fqx "$COMMIT_TITLE"; then
-            echo "DUPLICATE AI COMMIT TITLE REJECTED: $COMMIT_TITLE"
-            exit 1
-          fi
-
-          COMMIT_NAME="feat(ui): $COMMIT_TITLE"
-          echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"
-
-          git commit -m "$COMMIT_NAME"
-          ACTUAL_COMMIT_NAME="$(git log -1 --pretty=%s)"
-          test "$ACTUAL_COMMIT_NAME" = "$COMMIT_NAME"
-          COMMIT_SHA="$(git rev-parse HEAD)"
-          echo "UI_COMMIT_SHA=$COMMIT_SHA" >> "$GITHUB_ENV"
-
-          {
-            echo "## 🚀 MILAN Live UI Update"
-            echo
-            echo "**Commit:** \`$COMMIT_NAME\`"
-            echo
-            echo "**Commit SHA:** \`$COMMIT_SHA\`"
-            echo
-            echo "**Manual testing:** inspect this exact commit in the MILAN repository."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo "========================================"
-          echo "UI COMMIT NAME: $COMMIT_NAME"
-          echo "UI COMMIT SHA:  $COMMIT_SHA"
-          echo "========================================"
-          echo "::notice title=MILAN UI Commit::$COMMIT_NAME"
-
-          git push "https://x-access-token:${MILAN_GH_TOKEN}@github.com/Ignite-boy/MILAN.git" "$BRANCH"
-
       - name: Create verification PR
-        if: env.NO_AI_CHANGES == 'false'
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+          AUTO_BRANCH: ${{ inputs.auto_branch }}
+          RUN_NAME: ${{ inputs.run_name }}
         run: |
-          gh pr create --repo Ignite-boy/MILAN --base main --head "$AUTO_BRANCH" --title "$UI_COMMIT_NAME" --body "Automated UI change. Main is changed only after validation."
+          COMMIT_NAME="feat(ui): $RUN_NAME"
+          gh pr create \
+            --repo Ignite-boy/MILAN \
+            --base main \
+            --head "$AUTO_BRANCH" \
+            --title "$COMMIT_NAME" \
+            --body "Automated UI change generated by MILAN UI Planner."
 
       - name: Verify PR branch
-        if: env.NO_AI_CHANGES == 'false'
         working-directory: milan
+        env:
+          AUTO_BRANCH: ${{ inputs.auto_branch }}
         run: |
-          git diff --check origin/main...HEAD
-          changed_js="$(git diff --name-only origin/main...HEAD -- '*.js')"
+          git fetch origin main "$AUTO_BRANCH"
+          git diff --check origin/main..."origin/$AUTO_BRANCH"
+
+          changed_js="$(git diff --name-only origin/main..."origin/$AUTO_BRANCH" -- '*.js')"
           if [ -n "$changed_js" ]; then
             while IFS= read -r file; do
               [ -n "$file" ] && node --check "$file"
@@ -155,29 +103,33 @@ jobs:
           fi
 
       - name: Merge verified PR
-        if: env.NO_AI_CHANGES == 'false'
         working-directory: milan
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
+          AUTO_BRANCH: ${{ inputs.auto_branch }}
+          RUN_NAME: ${{ inputs.run_name }}
         run: |
+          COMMIT_NAME="feat(ui): $RUN_NAME"
           PR_NUMBER="$(gh pr list --repo Ignite-boy/MILAN --head "$AUTO_BRANCH" --base main --state open --json number --jq '.[0].number')"
           test -n "$PR_NUMBER"
+
           gh pr merge "$PR_NUMBER" --repo Ignite-boy/MILAN --squash --delete-branch
+
           git fetch origin main
           MERGED_COMMIT_NAME="$(git log origin/main -1 --pretty=%s)"
-          echo "MERGED COMMIT NAME: $MERGED_COMMIT_NAME"
-          test "$MERGED_COMMIT_NAME" = "$UI_COMMIT_NAME"
+          echo "EXPECTED COMMIT NAME: $COMMIT_NAME"
+          echo "MERGED COMMIT NAME:   $MERGED_COMMIT_NAME"
+          test "$MERGED_COMMIT_NAME" = "$COMMIT_NAME"
 
       - name: Verify production deployment
-        if: env.NO_AI_CHANGES == 'false'
         env:
-          RUN_ID: ${{ github.run_id }}
+          BUILD_ID: ${{ inputs.build_id }}
         run: |
           for i in $(seq 1 30); do
-            code="$(curl -L -s -o /tmp/milan-home -w '%{http_code}' --max-time 20 "https://milanlife.in/?_milan_run=${RUN_ID}")"
-            marker="$(curl -L -s --max-time 20 "https://milanlife.in/milan-build.txt?_milan_run=${RUN_ID}" || true)"
+            code="$(curl -L -s -o /tmp/milan-home -w '%{http_code}' --max-time 20 "https://milanlife.in/?_milan_run=${BUILD_ID}")"
+            marker="$(curl -L -s --max-time 20 "https://milanlife.in/milan-build.txt?_milan_run=${BUILD_ID}" || true)"
             echo "Deploy check $i/30: HTTP=$code MARKER=$marker"
-            if [ "$code" = "200" ] && [ "$marker" = "$RUN_ID" ]; then
+            if [ "$code" = "200" ] && [ "$marker" = "$BUILD_ID" ]; then
               echo "DEPLOYMENT SUCCESSFUL"
               exit 0
             fi
@@ -185,38 +137,34 @@ jobs:
           done
           exit 1
 
-
-      - name: Trigger recovery cycle after failure
+      - name: Trigger recovery planner cycle
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          echo "CYCLE FAILED — STARTING RECOVERY UI CYCLE"
           attempt=1
           while true; do
-            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main -f run_name="${UI_COMMIT_NAME:-MILAN UI Recovery Cycle}"; then
-              echo "RECOVERY UI CYCLE TRIGGERED"
+            if gh workflow run milan-ui-plan.yml --repo Ignite-boy/Live-UI-Update --ref main; then
+              echo "RECOVERY PLANNER CYCLE TRIGGERED"
               exit 0
             fi
-            echo "Recovery trigger attempt $attempt failed; retrying in 15 seconds..."
+            echo "Recovery planner attempt $attempt failed; retrying in 15 seconds..."
             attempt=$((attempt + 1))
             sleep 15
           done
 
-
-      - name: Trigger next continuous cycle
+      - name: Trigger next planner cycle
         if: success()
         env:
           GH_TOKEN: ${{ secrets.MILAN_GH_TOKEN }}
         run: |
-          echo "GREEN CYCLE COMPLETE — STARTING NEXT UI IMPROVEMENT"
           attempt=1
           while true; do
-            if gh workflow run milan-live-auto.yml --repo Ignite-boy/Live-UI-Update --ref main -f run_name="${UI_COMMIT_NAME:-MILAN UI Recovery Cycle}"; then
-              echo "NEXT UI CYCLE TRIGGERED"
+            if gh workflow run milan-ui-plan.yml --repo Ignite-boy/Live-UI-Update --ref main; then
+              echo "NEXT UI PLANNER CYCLE TRIGGERED"
               exit 0
             fi
-            echo "Trigger attempt $attempt failed; retrying in 15 seconds..."
+            echo "Planner trigger attempt $attempt failed; retrying in 15 seconds..."
             attempt=$((attempt + 1))
             sleep 15
           done
