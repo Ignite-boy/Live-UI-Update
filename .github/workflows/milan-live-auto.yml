@@ -93,7 +93,13 @@ jobs:
           COMMIT_TITLE="$(printf '%s' "$COMMIT_TITLE" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ *//; s/ *$//' | cut -c1-120)"
           test -n "$SUMMARY"
           test "$SUMMARY" != "Improve MILAN UI"
-          test -n "$COMMIT_TITLE" || COMMIT_TITLE="$SUMMARY"
+          test -n "$COMMIT_TITLE"
+          test "$COMMIT_TITLE" != "Improve MILAN UI"
+
+          if git log origin/main -n 40 --format='%s' | sed -E 's/^feat\(ui\): \[cycle-[0-9]+\] //' | grep -Fqx "$COMMIT_TITLE"; then
+            echo "DUPLICATE AI COMMIT TITLE REJECTED: $COMMIT_TITLE"
+            exit 1
+          fi
 
           COMMIT_NAME="feat(ui): [cycle-$GITHUB_RUN_NUMBER] $COMMIT_TITLE"
           echo "UI_COMMIT_NAME=$COMMIT_NAME" >> "$GITHUB_ENV"

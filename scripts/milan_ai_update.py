@@ -14,6 +14,17 @@ ALLOWED = re.compile(r"^frontend/.*\.(html|css|js)$", re.I)
 def run(*cmd, cwd=None, check=True):
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=check)
 
+def recent_commit_subjects():
+    result = subprocess.run(
+        ["git", "log", "origin/main", "-n", "40", "--format=%s"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return "(recent history unavailable)"
+    return result.stdout.strip()[:12000] or "(no recent commits)"
+
 def snapshot():
     files = []
     frontend = ROOT / "frontend"
@@ -66,12 +77,21 @@ Rules:
 - Return a short human-readable change summary in <summary>...</summary>.
 - Then return the unified git diff enclosed in <patch>...</patch>.
 - The summary must describe exactly what UI/UX was improved, e.g. "Improve publish button spacing".
+- commit_title must be a NEW, specific, human-readable title for THIS exact UI change.
+- commit_title must be unique against the recent commit history supplied below.
+- Never reuse a recent commit title, generic wording, or "Improve MILAN UI".
 - Do not return NO_CHANGE unless a safe UI change is genuinely impossible.
 - The patch must apply cleanly to the current files.
 """
 
 body_base = {
-    "input": PROMPT + "\n\nCURRENT MILAN FRONTEND:\n" + snapshot(),
+    "input": (
+        PROMPT
+        + "\n\nRECENT MILAN COMMIT SUBJECTS (DO NOT REUSE THESE TITLES):\n"
+        + recent_commit_subjects()
+        + "\n\nCURRENT MILAN FRONTEND:\n"
+        + snapshot()
+    ),
     "max_output_tokens": 6000,
 }
 
@@ -106,6 +126,7 @@ def ask_gemini(model):
                                 "enum": ["CHANGE", "NO_CHANGE"]
                             },
                             "summary": {"type": "string"},
+                            "commit_title": {"type": "string"},
                             "patch": {"type": "string"}
                         },
                         "required": ["decision", "summary", "commit_title", "patch"]
@@ -319,6 +340,43 @@ try:
             sys.exit(0)
 except Exception:
     pass
+
+recent_titles = []
+try:
+    recent_titles = [
+        line.strip()
+        for line in recent_commit_subjects().splitlines()
+        if line.strip()
+    ]
+except Exception:
+    recent_titles = []
+
+if not commit_title:
+    print("AI did not provide a mandatory commit_title; rejecting this attempt.")
+    sys.exit(0)
+
+if commit_title.lower() in {
+    "improve milan ui",
+    "improve ui",
+    "ui update",
+    "update ui",
+    "milAN ui update".lower(),
+}:
+    print("AI returned a generic commit_title; rejecting this attempt:", commit_title)
+    sys.exit(0)
+
+if commit_title.lower().startswith(("feat(ui):", "fix(ui):", "chore(ui):")):
+    print("AI commit_title incorrectly contains a commit prefix; rejecting this attempt:", commit_title)
+    sys.exit(0)
+
+normalized_recent = set()
+for subject in recent_titles:
+    m = re.match(r"^feat\(ui\):\s*\[cycle-[0-9]+\]\s*(.*)$", subject)
+    normalized_recent.add((m.group(1) if m else subject).strip().lower())
+
+if commit_title.strip().lower() in normalized_recent:
+    print("DUPLICATE AI COMMIT TITLE REJECTED:", commit_title)
+    sys.exit(0)
 
 if not summary or not patch:
     summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.S)
